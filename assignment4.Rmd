@@ -1,0 +1,156 @@
+---
+title: "assignment4"
+author: "Asaf Eliyahu & Einat Edelstien"
+date: "May 24, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls(all = TRUE))
+
+
+#Needed <- c("ngram", "readr","tm", "SnowballCC", "RColorBrewer", "ggplot2", "wordcloud", "biclust", "cluster", "igraph", "fpc")   
+#install.packages(Needed, dependencies=TRUE)   
+
+#install.packages("ngram")
+#install.packages('stringdist')
+library(readr)
+library(tm)
+library(SnowballC)
+library(ngram)
+library(stringdist)
+library(randomForest)
+library(party)
+library(caret)
+
+#unzip("train.csv.zip")
+train <- read_csv("train.csv")
+#unzip("test.csv.zip")
+test  <- read_csv("test.csv")
+
+
+```
+
+We first use text-mining to clean the text before we analyize and compare the text in the train and test file.
+
+We use the package "tm" for the text-mining.
+
+The following function recive vector of text and clean the text. We apply this function on each cloumn in the files.
+
+The function remove numbers, stopwords, punctuation, special characters and etc tp prepare the text for analysis. 
+
+We also remove White spaces which are the result of all the left over spaces that were not removed along with the words that were deleted.
+
+```{r functions}
+
+
+cleanQueries <- function(queries){
+  queries <-  gsub("<.*?>", "", queries) 
+  queries <-  gsub("&nbsp;", " ", queries)
+  queries = Corpus(VectorSource(queries))
+  queries <- tm_map(queries, removePunctuation)
+  queries <- tm_map(queries, removeNumbers)
+  queries <- tm_map(queries, removeWords, stopwords("english"))
+  queries <- tm_map(queries, PlainTextDocument)
+  queries <- tm_map(queries,content_transformer(stripWhitespace))
+  queries <- tm_map(queries, stemDocument)
+  
+  queries <- data.frame(text=unlist(sapply(queries, `[`, "content")), stringsAsFactors=F)
+  
+  return(queries$text)
+}
+
+
+```
+
+We use stringdist package to apply string distance algorithms on the text.
+We choose to compare the text in different cloumns using the following string distance algorithms:
+
+* osa - Levenshtein distance
+
+* lcs - Longest common substring distance
+
+* soundex - soundex encoding
+
+* jw - Jaro-Winker distance
+
+We apply the algorithms on the cloumns - title and description in both file, train and test.
+
+We than use the randomForest model to compare between the files and than write our result into csv file.
+
+```{r}
+
+#########################
+# Handle train csv file #
+#########################
+
+train$median_relevance <- factor(train$median_relevance)
+
+train$query <- cleanQueries(train$query)
+train$product_title <- cleanQueries(train$product_title)
+train$product_description <- cleanQueries(train$product_description)
+
+# levinstien
+train$levi_title <- stringdist(train$query,train$product_title, method = "osa") 
+train$levi_desc  <- stringdist(train$query,train$product_description, method = "osa") 
+# Longest common substring
+train$lcs_title <- stringdist(train$query,train$product_title, method = "lcs") 
+train$lcs_desc  <- stringdist(train$query,train$product_description, method = "lcs") 
+# soundex encoding
+train$soundex_title <- stringdist(train$query,train$product_title, method = "soundex") 
+train$soundex_desc  <- stringdist(train$query,train$product_description, method = "soundex") 
+# Jaro-Winker distance
+train$jaro_title  <- stringdist(train$query,train$product_title, method = "jw") 
+train$jaro_desc   <- stringdist(train$query,train$product_description, method = "jw") 
+
+########################
+# Handle test csv file #
+########################
+test$query <- cleanQueries(test$query)
+test$product_title <- cleanQueries(test$product_title)
+test$product_description <- cleanQueries(test$product_description)
+
+# levinstien
+test$levi_title <- stringdist(test$query,test$product_title, method = "osa") 
+test$levi_desc  <- stringdist(test$query,test$product_description, method = "osa") 
+# Longest common substring
+test$lcs_title <- stringdist(test$query,test$product_title, method = "lcs") 
+test$lcs_desc  <- stringdist(test$query,test$product_description, method = "lcs") 
+# soundex encoding
+test$soundex_title <- stringdist(test$query,test$product_title, method = "soundex") 
+test$soundex_desc  <- stringdist(test$query,test$product_description, method = "soundex") 
+# Jaro-Winker distance
+test$jaro_title  <- stringdist(test$query,test$product_title, method = "jw") 
+test$jaro_desc   <- stringdist(test$query,test$product_description, method = "jw") 
+
+
+```
+
+
+Here we apply the randomForest model to compare between the files.
+
+ We than write our result into csv file.
+
+
+```{r}
+
+
+model <- randomForest(median_relevance ~ levi_title + levi_desc+ lcs_title + lcs_desc + soundex_title + soundex_desc + jaro_title + jaro_desc, data=train, ntree=3)
+
+
+results <- predict(model, newdata = test)
+
+Newsubmission = data.frame(id=test$id, prediction = results)
+
+write.csv(Newsubmission,"result.csv",row.names=F)
+
+
+```
+
+Here is our score in the competition:
+
+
+![alt text](https://github.com/einated/ex4/blob/master/submission.jpg?raw=true)
+
+
+
